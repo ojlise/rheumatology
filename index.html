@@ -185,6 +185,10 @@ body.noalt .altonly{display:none!important}
 .altitem p{margin:3px 0 0;font-size:14px;color:var(--muted)}
 .ev{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:1px;white-space:nowrap}
 .altnote{background:var(--amberbg);border:1px solid color-mix(in srgb,var(--amber) 28%,transparent);border-radius:12px;padding:11px 14px;font-size:13.5px;margin:0 0 12px}
+.newb{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:999px;background:var(--amber);color:#fff;margin-left:6px;vertical-align:2px;font-family:var(--sans)}
+.newb.big{font-size:12px;padding:3px 10px;vertical-align:8px;margin-left:12px;letter-spacing:0}
+.checked{font-size:13.5px;color:var(--muted);margin:-2px 0 12px}
+.checked a{color:var(--accent);text-decoration:none}
 </style>
 </head>
 <body>
@@ -1278,10 +1282,42 @@ const DDX_LINK = {
 const NEURO = "https://ojlise.github.io/neurology/#";
 const DDX_NEURO = {"ALS":[["als","ALS"]],"Myotonic dystrophy":[["myotonic-dystrophy","Myotonic dystrophy"]],"Muscular dystrophy":[["dmd","Duchenne muscular dystrophy"]],
 "Migraine or cluster headache":[["migraine","Migraine"],["cluster","Cluster headache"]]};
+/* ===== WEEKLY-UPDATES-START (edited by the Saturday update job; keep valid JavaScript) =====
+   SITE_UPDATED: date of the most recent update run (YYYY-MM-DD).
+   WEEKLY: one object per change, appended over time; never delete old entries.
+   Fields: added (YYYY-MM-DD, date of the run that added it), id (condition id, or null for site-wide news),
+   kind: "upd" (dated news line), "tx" (treatment bullet; needs group), "alt" (complementary item; needs alt),
+         "ddx" (look-alike row; needs row [name, similar, distinguishing]), "ref" (reference only), "news" (no condition page),
+   date ("Mon YYYY", for upd/news), text (plain sentence in own words), group (treatment card title for tx),
+   alt ({c,t,e,n} as in ALT), ref ([title, url] — a page actually read), name/href (for news). */
+const SITE_UPDATED = "2026-11-25";
+const WEEKLY = [];
+/* ===== WEEKLY-UPDATES-END ===== */
 // ===== App =====
 const DIS = [];
 AREAS.forEach(a => a.subs.forEach(s => s.diseases.forEach(d => { d.area = a; d.sub = s; DIS.push(d); })));
 DIS.forEach(d => { d.ddx = d.ddx || DDX[d.id] || []; });
+
+// ===== Merge weekly updates and mark what is new =====
+const NEW_TXT = new Set();
+const NEW_IDS = new Set();
+const dayNum = s => Math.floor(Date.parse(s + "T12:00:00Z") / 864e5);
+const isNew = w => w.added && dayNum(w.added) >= dayNum(SITE_UPDATED) - 6;
+const NEW_NEWS = [];
+WEEKLY.forEach(w => {
+  const d = w.id ? DIS.find(x => x.id === w.id) : null;
+  const fresh = isNew(w);
+  if (w.kind === "news" || !d) { const u = (w.date || "") + ": " + w.text; EXTRA_UPD.push({name: w.name || "Rheumatology news", href: w.href || "#updates", u, _new: fresh}); if (fresh) NEW_TXT.add(u); return; }
+  if (w.kind === "upd") { const u = w.date + ": " + w.text; d.upd = (d.upd || []).concat(u); if (fresh) NEW_TXT.add(u); }
+  if (w.kind === "tx") { const g = d.tx.find(x => x[0] === (w.group || "Recent additions")); g ? g[1].push(w.text) : d.tx.push([w.group || "Recent additions", [w.text]]); if (fresh) NEW_TXT.add(w.text); }
+  if (w.kind === "alt" && w.alt) { d.alt = (d.alt || []).concat(Object.assign({}, w.alt, {_new: fresh})); }
+  if (w.kind === "ddx" && w.row) { d.ddx = (d.ddx || []).concat([w.row]); if (fresh) NEW_TXT.add(w.row[0]); }
+  if (w.ref) { d.refs.push(w.ref); if (fresh) NEW_TXT.add(w.ref[0]); }
+  if (fresh) NEW_IDS.add(d.id);
+});
+const NEWB = `<span class="newb">NEW</span>`;
+const newCount = WEEKLY.filter(isNew).length;
+const fmtDate = s => new Date(s + "T12:00:00Z").toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric", timeZone: "UTC"});
 
 const SECS = [["ov","Overview"],["sx","Symptoms"],["early","Early signs"],["red","Red flags"],["dx","Diagnosis"],["ddx","Differential diagnosis"],["tx","Treatment"],["alt","Complementary"],["upd","Recent updates"],["refs","References"]];
 const has = (d, k) => (k === "alt" ? ALT_ON && d.alt && d.alt.length : k === "red" ? d.red && d.red.length : k === "upd" ? d.upd && d.upd.length : k === "ddx" ? d.ddx && d.ddx.length : true);
@@ -1295,7 +1331,7 @@ function applyAlt() { document.body.classList.toggle("noalt", !ALT_ON); const b 
 $("#altsw").addEventListener("click", () => { ALT_ON = !ALT_ON; try { localStorage.setItem("rheumatlas.alt", ALT_ON ? "on" : "off"); } catch (e) {} applyAlt(); const y = window.scrollY; render(true); window.scrollTo({top: y}); });
 const evBadge = e => `<span class="ev" style="color:${EV[e][1]};background:${EV[e][2]}">${EV[e][0]}</span>`;
 const ALT_CATS = ["Exercise","Diet","Supplements & vitamins","Mind-body & manual therapies","Lifestyle","Other","Safety"];
-const altBlock = items => ALT_CATS.filter(c => items.some(i => i.c === c)).map(c => `<div class="card altcat"><h3>${esc(c)}</h3>${items.filter(i => i.c === c).map(i => `<div class="altitem"><b>${esc(i.t)}</b>${evBadge(i.e)}<p>${esc(i.n)}</p></div>`).join("")}</div>`).join("");
+const altBlock = items => ALT_CATS.filter(c => items.some(i => i.c === c)).map(c => `<div class="card altcat"><h3>${esc(c)}</h3>${items.filter(i => i.c === c).map(i => `<div class="altitem"><b>${esc(i.t)}</b>${evBadge(i.e)}${i._new ? NEWB : ""}<p>${esc(i.n)}</p></div>`).join("")}</div>`).join("");
 
 function renderSide(cur) {
   const curD = DIS.find(d => d.id === cur);
@@ -1303,10 +1339,10 @@ function renderSide(cur) {
   if (curA) openAreas.add(curA);
   $side.innerHTML = `<h4>Areas of rheumatology</h4>` + AREAS.map(a => `
     <div class="tarea ${openAreas.has(a.id) ? "open" : ""}" data-a="${a.id}">
-      <button class="${curA === a.id ? "on" : ""}" data-toggle="${a.id}"><span class="dot" style="background:${a.color}"></span>${esc(a.short)}<span class="chev">▶</span></button>
+      <button class="${curA === a.id ? "on" : ""}" data-toggle="${a.id}"><span class="dot" style="background:${a.color}"></span>${esc(a.short)}${a.subs.some(s => s.diseases.some(d => NEW_IDS.has(d.id))) ? NEWB : ""}<span class="chev">▶</span></button>
       <div class="tsub">
         <a href="#${a.id}" class="${cur === a.id ? "on" : ""}">Overview</a>
-        ${a.subs.map(s => `<div class="sl">${esc(s.name)}</div>${s.diseases.map(d => `<a href="#${d.id}" class="${cur === d.id ? "on" : ""}">${esc(short(d.name))}</a>`).join("")}`).join("")}
+        ${a.subs.map(s => `<div class="sl">${esc(s.name)}</div>${s.diseases.map(d => `<a href="#${d.id}" class="${cur === d.id ? "on" : ""}">${esc(short(d.name))}${NEW_IDS.has(d.id) ? NEWB : ""}</a>`).join("")}`).join("")}
       </div>
     </div>`).join("") +
     `<h4 style="margin-top:18px">Reference</h4><div class="tlinks">
@@ -1319,8 +1355,8 @@ $side.addEventListener("click", e => {
   if (e.target.closest("a")) document.body.classList.remove("nav");
 });
 
-const list = (arr, c) => `<ul class="clean" style="--c:${c || "var(--accent)"}">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
-const refList = refs => `<ol class="refs">${refs.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("")}</ol>`;
+const list = (arr, c) => `<ul class="clean" style="--c:${c || "var(--accent)"}">${arr.map(x => `<li>${esc(x)}${NEW_TXT.has(x) ? NEWB : ""}</li>`).join("")}</ul>`;
+const refList = refs => `<ol class="refs">${refs.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>${NEW_TXT.has(t) ? NEWB : ""}</li>`).join("")}</ol>`;
 const table = (heads, rows, cls = "") => `<div class="card ddt"><div class="ddrow head ${cls}">${heads.map(h => `<div>${esc(h)}</div>`).join("")}</div>${rows.map(r => `<div class="ddrow ${cls}">${r.map((x, i) => `<div class="${i === 0 ? "nm" : i === 1 && r.length > 2 ? "sim" : ""}">${esc(x)}</div>`).join("")}</div>`).join("")}</div>`;
 const DISC = `<div class="disc">Educational content only. It does not replace evaluation by a rheumatologist or your own clinician, and drug labels, warnings, and guidelines change — check current prescribing information.</div>`;
 
@@ -1332,13 +1368,14 @@ function ddxName(d, n) {
     .concat(nl.map(([id, l]) => `<a href="${NEURO}${id}" target="_blank" rel="noopener">${esc(l)} in NeuroAtlas ↗</a>`));
   return esc(n) + (links.length ? `<div class="ddl">${links.join("")}</div>` : "");
 }
-const ddxTable = d => `<div class="card ddt"><div class="ddrow head"><div>Look-alike</div><div>What's similar</div><div>How to tell them apart</div></div>${d.ddx.map(([n, s, g]) => `<div class="ddrow"><div class="nm">${ddxName(d, n)}</div><div class="sim">${esc(s)}</div><div>${esc(g)}</div></div>`).join("")}</div>`;
+const ddxTable = d => `<div class="card ddt"><div class="ddrow head"><div>Look-alike</div><div>What's similar</div><div>How to tell them apart</div></div>${d.ddx.map(([n, s, g]) => `<div class="ddrow"><div class="nm">${ddxName(d, n)}${NEW_TXT.has(n) ? NEWB : ""}</div><div class="sim">${esc(s)}</div><div>${esc(g)}</div></div>`).join("")}</div>`;
 
 function vHome() {
   const nUpd = DIS.reduce((t, d) => t + (d.upd ? d.upd.length : 0), 0) + EXTRA_UPD.length;
   return `
   <div class="hero">
     <h1>RheumAtlas</h1>
+    <p class="checked">Checked for new approvals, guidelines and therapies: <b>${fmtDate(SITE_UPDATED)}</b>${newCount ? ` · <a href="#updates">${newCount} new item${newCount === 1 ? "" : "s"} this update ${NEWB}</a>` : " · no changes found in the latest check"}</p>
     <p class="lede">A comprehensive, plain-language reference to rheumatic and musculoskeletal disease: how each condition presents, the warning signs that need prompt care, how it is diagnosed and told apart from look-alikes, and how it is treated today — with links to the guidelines behind it.</p>
     <div class="stats">
       <div class="stat"><b>${AREAS.length}</b><span>disease areas</span></div>
@@ -1386,7 +1423,7 @@ function vArea(a) {
     <h2>${esc(s.name)}</h2>
     <div class="grid">${s.diseases.map(d => `
       <a class="card dcard" style="border-top:3px solid ${a.color}" href="#${d.id}">
-        <b>${esc(d.name)}</b><p>${esc(d.ov)}</p>
+        <b>${esc(d.name)}${NEW_IDS.has(d.id) ? NEWB : ""}</b><p>${esc(d.ov)}</p>
         ${d.upd && d.upd.length ? `<span class="badge" style="background:var(--greenbg);color:var(--green);border-color:color-mix(in srgb,var(--green) 30%,transparent)">Updated</span> ` : ""}${d.red && d.red.length ? `<span class="badge">Red flags</span>` : ""}
       </a>`).join("")}
     </div>`).join("")}
@@ -1397,7 +1434,7 @@ function vDisease(d) {
   const i = DIS.indexOf(d), prev = DIS[i - 1], next = DIS[i + 1], c = d.area.color;
   return `
   <div class="crumbs"><a href="#home">Home</a> › <a href="#${d.area.id}">${esc(d.area.name)}</a> › ${esc(d.sub.name)}</div>
-  <h1>${esc(d.name)}</h1>
+  <h1>${esc(d.name)}${NEW_IDS.has(d.id) ? `<span class="newb big">Updated ${fmtDate(SITE_UPDATED)}</span>` : ""}</h1>
   ${d.aka ? `<div class="aka">Also called: ${esc(d.aka)}</div>` : ""}
   <div class="pills">${SECS.filter(([k]) => has(d, k)).map(([k, l]) => `<button class="pill" data-jump="${k}">${l}</button>`).join("")}</div>
   <p class="lede sec" id="sec-ov">${esc(d.ov)}</p>
@@ -1503,6 +1540,11 @@ function vComplementary() {
 
 const MON = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Sept:8,Oct:9,Nov:10,Dec:11};
 const dkey = u => { const h = u.split(":")[0].trim().split(/\s+/); return h.length === 2 ? (+h[1]) * 12 + (MON[h[0]] ?? 0) : (+h[0]) * 12 - 1; };
+function latestPanel() {
+  const fresh = WEEKLY.filter(isNew);
+  const label = {upd: "News", tx: "Treatment", alt: "Complementary", ddx: "Look-alike", ref: "Reference", news: "News"};
+  return `<div class="card k-upd" style="margin:6px 0 10px"><h3>Latest update check: ${fmtDate(SITE_UPDATED)}</h3>${fresh.length ? `<ul class="clean" style="--c:var(--green)">${fresh.filter(w => w.kind !== "alt" || ALT_ON).map(w => { const d = w.id && DIS.find(x => x.id === w.id); return `<li><b>${label[w.kind] || "Update"}</b>${d ? ` · <a href="#${d.id}" style="color:var(--accent);text-decoration:none">${esc(d.name)}</a>` : ""}: ${esc(w.kind === "alt" ? w.alt.t + " — " + w.alt.n : w.kind === "ddx" ? w.row[0] + " added as a look-alike" : w.text || (w.ref ? w.ref[0] : ""))} ${NEWB}</li>`; }).join("")}</ul>` : `<p style="margin:0;color:var(--muted)">No new approvals, guideline changes, or therapies were found since the previous check.</p>`}</div>`;
+}
 function vUpdates() {
   const items = DIS.filter(d => d.upd && d.upd.length).flatMap(d => d.upd.map(u => ({name: d.name, href: "#" + d.id, u})))
     .concat(EXTRA_UPD).sort((a, b) => dkey(b.u) - dkey(a.u));
@@ -1510,8 +1552,10 @@ function vUpdates() {
   <div class="crumbs"><a href="#home">Home</a> › What's new</div>
   <h1>What's new</h1>
   <p class="lede">Approvals, safety actions, and guideline changes recorded in the atlas, newest first (${items.length} items). Each links to the condition page and its sources.</p>
+  ${latestPanel()}
+  <h2>All dated updates</h2>
   <div class="updlist">${items.map(x => `
-    <div class="u"><time>${esc(x.u.split(":")[0])}</time><div><a href="${x.href}">${esc(x.name)}</a><div style="font-size:14px;margin-top:3px">${esc(x.u.slice(x.u.indexOf(":") + 2))}</div></div></div>`).join("")}
+    <div class="u"><time>${esc(x.u.split(":")[0])}</time><div><a href="${x.href}">${esc(x.name)}</a>${NEW_TXT.has(x.u) ? NEWB : ""}<div style="font-size:14px;margin-top:3px">${esc(x.u.slice(x.u.indexOf(":") + 2))}</div></div></div>`).join("")}
   </div>
   <div class="disc">Items were checked against news, regulatory, and guideline sources in November 2026. Other recent changes may exist; confirm with prescribing information before acting.</div>`;
 }
